@@ -1,3 +1,5 @@
+use core::panic;
+
 use wgpu::util::DeviceExt;
 
 pub struct Engine<'l>{
@@ -17,6 +19,8 @@ pub enum LoadOp{
 struct Mesh<'l>{
     vertex_data:&'l[u8],
     vertex_attribtes_id:usize,
+    index_data:&'l[u8],
+    index_format:wgpu::IndexFormat,
 }
 
 struct VertexAttributeData{
@@ -25,8 +29,9 @@ struct VertexAttributeData{
 }
 
 struct MeshData{
-    num_vertices:u32,
     vertex_buffer:wgpu::Buffer,
+    index_buffer:wgpu::Buffer,
+    num_indices:u32,
 }
 
 struct RenderPass{
@@ -62,12 +67,25 @@ impl<'l> Engine<'l>{
         self.render_passes.push( RenderPass { shader_id, load_op, mesh_id });
     }
 
-    pub fn add_mesh(&mut self, vertex_data:&'l[u8], vertex_buffer_layout_id:usize) -> usize{
-        self.meshes.push(Mesh { vertex_data, vertex_attribtes_id: vertex_buffer_layout_id });
+    pub fn add_mesh(
+        &mut self, 
+        vertex_data:&'l[u8], 
+        vertex_buffer_layout_id:usize, 
+        index_data:&'l[u8], 
+        index_format:wgpu::IndexFormat
+    ) -> usize{
+        self.meshes.push(Mesh { vertex_data, vertex_attribtes_id: vertex_buffer_layout_id, index_data, index_format });
         self.meshes.len() - 1
     }
 
-    fn get_size(format:&wgpu::VertexFormat)->u64{
+    fn get_index_format_size(format:&wgpu::IndexFormat)->u32{
+        match format{
+            wgpu::IndexFormat::Uint16 => 2,
+            wgpu::IndexFormat::Uint32 => 4,
+        }
+    }
+
+    fn get_vertex_format_size(format:&wgpu::VertexFormat)->u64{
         match format{
             wgpu::VertexFormat::Float32 => 4,
             wgpu::VertexFormat::Float32x2 => 4*2,
@@ -148,7 +166,7 @@ impl<'l> Engine<'l>{
             let mut attributes:Vec<wgpu::VertexAttribute> = Vec::new();
             for format in vertex_attributes{
                 attributes.push(wgpu::VertexAttribute{offset:stride, shader_location:location, format:*format});
-                stride+=Self::get_size(format);
+                stride+=Self::get_vertex_format_size(format);
                 location+=1;
             }
             vertex_attribute_datas.push(VertexAttributeData { stride, attributes });
@@ -163,9 +181,17 @@ impl<'l> Engine<'l>{
                     usage: wgpu::BufferUsages::VERTEX,
                 }
             );
-            let stride = vertex_attribute_datas[mesh.vertex_attribtes_id].stride as u32;
-            let num_vertices = mesh.vertex_data.len() as u32/ stride;
-            meshes.push(MeshData { vertex_buffer, num_vertices });
+
+            let index_buffer = device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("Index Buffer"),
+                    contents: mesh.index_data,
+                    usage: wgpu::BufferUsages::INDEX,
+                }
+            );
+
+            let num_indices = mesh.index_data.len() as u32 / Self::get_index_format_size(&mesh.index_format);
+            meshes.push(MeshData { vertex_buffer, index_buffer, num_indices });
         }
 
         let mut render_pipelines:Vec<wgpu::RenderPipeline> = Vec::new();
@@ -264,8 +290,9 @@ impl<'l> Engine<'l>{
                                         render_pass.set_pipeline(&render_pipelines[i]);
                                         let mesh_data = &meshes[self.render_passes[i].mesh_id];
                                         render_pass.set_vertex_buffer(0, mesh_data.vertex_buffer.slice(..));
-                                        println!("{}", mesh_data.num_vertices);
-                                        render_pass.draw(0..mesh_data.num_vertices, 0..1);
+                                        render_pass.set_index_buffer(mesh_data.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                                        println!("{}", mesh_data.num_indices);
+                                        render_pass.draw_indexed(0..mesh_data.num_indices, 0, 0..1);
                                     }
                                 }
                                 queue.submit(std::iter::once(encoder.finish()));
