@@ -1,10 +1,9 @@
-use core::panic;
-
 use wgpu::util::DeviceExt;
 
 pub struct Engine<'l>{
     window_width:f64,
     window_height:f64,
+    textures:Vec<Texture>,
     shaders:Vec<wgpu::ShaderSource<'l>>,
     vertex_attributes:Vec<&'l[wgpu::VertexFormat]>,
     meshes:Vec<Mesh<'l>>,
@@ -16,11 +15,22 @@ pub enum LoadOp{
     Load,
 }
 
+struct Texture{
+    data:Vec<u8>,
+    size:wgpu::Extent3d,
+}
+
+struct TextureData{
+    bind_group_layout:wgpu::BindGroupLayout,
+    bind_group:wgpu::BindGroup,
+}
+
 struct Mesh<'l>{
     vertex_data:&'l[u8],
     vertex_attribtes_id:usize,
     index_data:&'l[u8],
     index_format:wgpu::IndexFormat,
+    texture_ids:Vec<usize>,
 }
 
 struct VertexAttributeData{
@@ -46,11 +56,17 @@ impl<'l> Engine<'l>{
         Engine { 
             window_width, 
             window_height, 
+            textures: Vec::new(),
             shaders: Vec::new(), 
             meshes:Vec::new(), 
             render_passes: Vec::new(), 
             vertex_attributes:Vec::new() 
         }
+    }
+
+    pub fn add_texture(&mut self, data:Vec<u8>, size:wgpu::Extent3d)->usize{
+        self.textures.push(Texture { data, size });
+        self.textures.len() - 1
     }
 
     pub fn add_vertex_attributes(&mut self, vertex_attributes:&'l[wgpu::VertexFormat]) -> usize{
@@ -72,9 +88,10 @@ impl<'l> Engine<'l>{
         vertex_data:&'l[u8], 
         vertex_buffer_layout_id:usize, 
         index_data:&'l[u8], 
-        index_format:wgpu::IndexFormat
+        index_format:wgpu::IndexFormat,
+        texture_ids:Vec<usize>,
     ) -> usize{
-        self.meshes.push(Mesh { vertex_data, vertex_attribtes_id: vertex_buffer_layout_id, index_data, index_format });
+        self.meshes.push(Mesh { vertex_data, vertex_attribtes_id: vertex_buffer_layout_id, index_data, index_format, texture_ids });
         self.meshes.len() - 1
     }
 
@@ -150,6 +167,89 @@ impl<'l> Engine<'l>{
 
         //======================================================================
 
+        let mut textures:Vec<TextureData> = Vec::new();
+        for texture in self.textures{
+            let wgpu_texture = device.create_texture(
+                &wgpu::TextureDescriptor {
+                    size: texture.size,
+                    mip_level_count: 1, 
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    label: Some("diffuse_texture"),
+                    view_formats: &[],
+                }
+            );
+
+            queue.write_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &wgpu_texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &texture.data,
+                wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4 * texture.size.width),
+                    rows_per_image: Some(texture.size.height),
+                },
+                texture.size,
+            );
+
+            let view = wgpu_texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                address_mode_w: wgpu::AddressMode::ClampToEdge,
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Nearest,
+                mipmap_filter: wgpu::FilterMode::Nearest,
+                ..Default::default()
+            });
+
+            let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+                label: Some("texture_bind_group_layout"),
+            });
+
+            let bind_group = device.create_bind_group(
+                &wgpu::BindGroupDescriptor {
+                    layout: &bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&sampler),
+                        }
+                    ],
+                    label: Some("diffuse_bind_group"),
+                }
+            );
+            textures.push(TextureData { bind_group_layout, bind_group });
+        }
+
         let mut shaders:Vec<wgpu::ShaderModule> = Vec::new();
         for shader in self.shaders{
             shaders.push(device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -198,9 +298,13 @@ impl<'l> Engine<'l>{
         for render_pass in &self.render_passes{
             let shader = &shaders[render_pass.shader_id];
 
+            let mut bind_group_layouts:Vec<&wgpu::BindGroupLayout> = Vec::new();
+            for texture_id in &self.meshes[render_pass.mesh_id].texture_ids{
+                bind_group_layouts.push(&textures[*texture_id].bind_group_layout);
+            }
             let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &bind_group_layouts,
                 push_constant_ranges: &[],
             });
 
@@ -288,10 +392,15 @@ impl<'l> Engine<'l>{
                                             timestamp_writes: None,
                                         });
                                         render_pass.set_pipeline(&render_pipelines[i]);
+
+                                        let texture_ids = &self.meshes[self.render_passes[i].mesh_id].texture_ids;
+                                        for i in 0..texture_ids.len(){
+                                            render_pass.set_bind_group(i as u32, &textures[texture_ids[i]].bind_group, &[]);
+                                        }
+
                                         let mesh_data = &meshes[self.render_passes[i].mesh_id];
                                         render_pass.set_vertex_buffer(0, mesh_data.vertex_buffer.slice(..));
                                         render_pass.set_index_buffer(mesh_data.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                                        println!("{}", mesh_data.num_indices);
                                         render_pass.draw_indexed(0..mesh_data.num_indices, 0, 0..1);
                                     }
                                 }
