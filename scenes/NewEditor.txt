@@ -1,0 +1,5 @@
+LabeledTextbox Name Map1
+LabeledIntbox Width 100
+LabeledIntbox Height 25
+SceneButton Create Editor
+SceneButton Back Main

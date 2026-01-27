@@ -1,0 +1,4 @@
+SceneButton Paint NewPaint
+SceneButton Paint LoadPaint
+SceneButton NewEditor NewEditor
+SceneButton LoadEditor LoadEditor

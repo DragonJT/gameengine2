@@ -1,0 +1,5 @@
+Paint
+LabeledColorbox BrushColor
+LabeledIntbox BrushRadius 5
+Button Save
+SceneButton Back Main

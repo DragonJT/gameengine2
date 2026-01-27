@@ -1,0 +1,3 @@
+LabeledTextbox Name Player
+SceneButton Load Paint
+SceneButton Back Main

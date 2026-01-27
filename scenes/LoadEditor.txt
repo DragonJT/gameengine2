@@ -1,0 +1,3 @@
+LabeledTextbox Name Map1
+SceneButton Load Editor
+SceneButton Back Main

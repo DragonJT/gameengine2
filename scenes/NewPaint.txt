@@ -1,0 +1,5 @@
+LabeledTextbox Name Player
+LabeledIntbox Width 100
+LabeledIntbox Height 100
+SceneButton Create Paint
+SceneButton Back Main
