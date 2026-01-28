@@ -1,3 +1,5 @@
 Editor
+Label Pngs
+FileSelector Png pngs
 SceneButton Play Game
 SceneButton Back Main

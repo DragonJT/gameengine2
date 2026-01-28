@@ -2,7 +2,7 @@
 using System.Reflection;
 using System.Numerics;
 
-enum StyleColor { Background, TextDark, TextLight, SelectedBorder, DeSelectedBorder, Check1, Check2 }
+enum StyleColor { Background, TextDark, TextLight, SelectedBorder, DeSelectedBorder, Selected, Check1, Check2 }
 
 class StyleColors
 {
@@ -72,6 +72,13 @@ class Style(string file)
         Raylib.DrawRectangleLinesEx(rect, 2, styleColors.GetColor(layoutColor));
         return rect;
     }
+
+    public Rectangle Rect(Vector2 pos, float width, StyleColor layoutColor)
+    {
+        var rect = new Rectangle(pos.X, pos.Y, width, fontSize);
+        Raylib.DrawRectangle((int)rect.X, (int)rect.Y, (int)rect.Width, (int)rect.Height, styleColors.GetColor(layoutColor));
+        return rect;
+    }
 }
 
 static class MouseOver
@@ -106,7 +113,7 @@ static class MouseOver
 
 interface IGUI
 {
-    void Update(Vector2 pos, float width);
+    float Update(Vector2 pos, float width);
 }
 
 interface IForm
@@ -124,9 +131,10 @@ class Label(string text) : IGUI
 {
     readonly string text = text;
 
-    public void Update(Vector2 pos, float width)
+    public float Update(Vector2 pos, float width)
     {
         Scenes.style.DrawText(pos, text, StyleColor.TextDark);
+        return Style.lineSize;
     }
 }
 
@@ -151,7 +159,7 @@ class Textbox(string value) : IGUI
         }
     }
 
-    public void Update(Vector2 pos, float width)
+    public float Update(Vector2 pos, float width)
     {
         var mouseOver = MouseOver.IsMouseOver(this);
         if (Raylib.IsMouseButtonPressed(MouseButton.Left))
@@ -165,6 +173,7 @@ class Textbox(string value) : IGUI
         var rect = Scenes.style.RectBorder(pos, width, selected ? StyleColor.SelectedBorder : StyleColor.DeSelectedBorder);
         MouseOver.SetRect(this, rect);
         Scenes.style.DrawText(pos, value, StyleColor.TextLight);
+        return Style.lineSize;
     }
 }
 
@@ -184,13 +193,14 @@ class Colorbox : IGUI
             float.Parse(abox.value));
     }
 
-    public void Update(Vector2 pos, float width)
+    public float Update(Vector2 pos, float width)
     {
         var w = width / 4f;
         rbox.Update(pos, w);
         gbox.Update(new Vector2(pos.X + w, pos.Y), w);
         bbox.Update(new Vector2(pos.X + w * 2, pos.Y), w);
         abox.Update(new Vector2(pos.X + w * 3, pos.Y), w);
+        return Style.lineSize;
     }
 }
 
@@ -200,11 +210,12 @@ class LabeledColorbox(string name) : IGUI, IForm
     readonly Colorbox colorbox = new();
     public object Value => colorbox.GetColor();
 
-    public void Update(Vector2 pos, float width)
+    public float Update(Vector2 pos, float width)
     {
         var w = width * 0.3f;
         Scenes.style.DrawText(pos, Name, StyleColor.TextDark);
         colorbox.Update(new Vector2(pos.X + w, pos.Y), width * 0.7f);
+        return Style.lineSize;
     }
 }
 
@@ -214,11 +225,12 @@ class LabeledIntbox(string name, int value) : IGUI, IForm
     readonly Textbox textbox = new(value.ToString());
     public object Value => int.Parse(textbox.value);
 
-    public void Update(Vector2 pos, float width)
+    public float Update(Vector2 pos, float width)
     {
         var w = width * 0.3f;
         Scenes.style.DrawText(pos, Name, StyleColor.TextDark);
         textbox.Update(new Vector2(pos.X + w, pos.Y), width * 0.7f);
+        return Style.lineSize;
     }
 }
 
@@ -228,22 +240,28 @@ class LabeledTextbox(string name, string value) : IGUI, IForm
     readonly Textbox textbox = new(value);
     public object Value => textbox.value;
 
-    public void Update(Vector2 pos, float width)
+    public float Update(Vector2 pos, float width)
     {
         var w = width * 0.3f;
         Scenes.style.DrawText(pos, Name, StyleColor.TextDark);
         textbox.Update(new Vector2(pos.X + w, pos.Y), width * 0.7f);
+        return Style.lineSize;
     }
 }
 
 class Button(string name) : IGUI, IForm
 {
-    public string Name { get; } = name;
+    public string Name => name;
     public object Value { get; private set; } = false;
 
     public virtual void OnClick() { }
 
-    public void Update(Vector2 pos, float width)
+    public float Update(Vector2 pos, float width)
+    {
+        return Update(false, pos, width);
+    }
+
+    public float Update(bool selected, Vector2 pos, float width)
     {
         var mouseOver = MouseOver.IsMouseOver(this);
         var onclick = mouseOver && Raylib.IsMouseButtonPressed(MouseButton.Left);
@@ -252,9 +270,44 @@ class Button(string name) : IGUI, IForm
         {
             OnClick();
         }
+        if (selected)
+        {
+            Scenes.style.Rect(pos, width, StyleColor.Selected);
+        }
         var rect = Scenes.style.RectBorder(pos, width, mouseOver ? StyleColor.SelectedBorder : StyleColor.DeSelectedBorder);
         MouseOver.SetRect(this, rect);
         Scenes.style.DrawText(pos, Name, StyleColor.TextDark);
+        return Style.lineSize;
+    }
+}
+
+class FileSelector(string name, string path) : IGUI, IForm, IAwake
+{
+    public string Name => name;
+    readonly string path = path;
+    Button[] fileButtons;
+    Button selected;
+    public object Value => selected.Name;
+
+    public void Awake(Scene last)
+    {
+        var files = Directory.GetFiles(path);
+        fileButtons = [.. files.Select(f => new Button(Path.GetFileNameWithoutExtension(f)))];
+        selected = fileButtons.FirstOrDefault();
+    }
+
+    public float Update(Vector2 pos, float width)
+    {
+        float y = 0;
+        foreach (var b in fileButtons)
+        {
+            y += b.Update(selected == b, new Vector2(pos.X, pos.Y + y), width);
+            if ((bool)b.Value)
+            {
+                selected = b;
+            }
+        }
+        return y;
     }
 }
 
@@ -363,8 +416,7 @@ class Scene
         float y = 20;
         foreach (var gui in guis.ToArray())
         {
-            gui.Update(new Vector2(20, y), 800);
-            y += Style.lineSize;
+            y += gui.Update(new Vector2(20, y), 800);
         }
     }
 }

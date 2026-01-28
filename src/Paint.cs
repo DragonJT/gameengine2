@@ -99,6 +99,7 @@ class Paint : IGUI, IAwake
     public void Awake(Scene last)
     {
         name = (string)last.GetValue("Name");
+        Console.WriteLine(name);
         var file = $"pngs/{name}.png";
         if (File.Exists(file))
         {
@@ -168,7 +169,7 @@ class Paint : IGUI, IAwake
         return Raylib.GetScreenToWorld2D(Raylib.GetMousePosition(), cam);
     }
 
-    public void Update(Vector2 pos, float width)
+    public float Update(Vector2 pos, float width)
     {
         MouseOver.SetDefault(this);
         cam.Offset = Raylib.GetScreenCenter();
@@ -223,5 +224,6 @@ class Paint : IGUI, IAwake
         {
             paintTex.SaveToPng(name);
         }
+        return 0;
     }
 }

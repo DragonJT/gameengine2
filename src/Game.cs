@@ -1,13 +1,80 @@
 using System.Numerics;
 using Raylib_cs;
 
+class Texture
+{
+    public readonly string name;
+    public readonly bool valid;
+    public readonly Texture2D texture;
+
+    public Texture(string name)
+    {
+        this.name = name;
+        var file = $"pngs/{name}.png";
+        if (File.Exists(file))
+        {
+            valid = true;
+            texture = Raylib.LoadTexture(file);
+        }
+        else
+        {
+            valid = false;
+        }
+    }
+}
+
+class Textures
+{
+    readonly List<Texture> textures = [];
+
+    public void Save(ByteWriter writer)
+    {
+        writer.SetInt(textures.Count);
+        for (var i = 0; i < textures.Count; i++)
+        {
+            writer.SetString(textures[i].name);
+        }
+    }
+
+    public Textures(ByteReader reader)
+    {
+        var length = reader.GetInt();
+        for (var i = 0; i < length; i++)
+        {
+            string name = reader.GetString();
+            textures.Add(new Texture(name));
+        }
+    }
+
+    public Textures()
+    {
+    }
+
+    public Texture GetTexture(byte id)
+    {
+        return textures[id - 1];
+    }
+
+    public byte GetID(string name)
+    {
+        for (var i = 0; i < textures.Count; i++)
+        {
+            if (textures[i].name == name)
+            {
+                return (byte)(i + 1);
+            }
+        }
+        textures.Add(new Texture(name));
+        return (byte)textures.Count;
+    }
+}
+
 class Tilemap(int width, int height)
 {
     public readonly int width = width;
     public readonly int height = height;
     readonly byte[,] tiles = new byte[width, height];
     const int tileSize = 100;
-    Texture2D tex = Raylib.LoadTexture("pngs/Tile1.png");
 
     public static (int, int) GetCell(Vector2 position)
     {
@@ -32,7 +99,7 @@ class Tilemap(int width, int height)
             {
                 if (x >= 0 && x < width && y >= 0 && y < height)
                 {
-                    if (tiles[x, y] == 1)
+                    if (tiles[x, y] > 0)
                     {
                         return true;
                     }
@@ -42,39 +109,48 @@ class Tilemap(int width, int height)
         return false;
     }
 
-    public void Draw()
+    public void Draw(Textures textures)
     {
         for (var x = 0; x < width; x++)
         {
             for (var y = 0; y < height; y++)
             {
-                if (tiles[x, y] == 1)
+                var id = tiles[x, y];
+                if (id > 0)
                 {
-                    Raylib.DrawTexture(tex, x * tileSize, y * tileSize, Color.White);
+                    var texture = textures.GetTexture(id);
+                    if (texture.valid)
+                    {
+                        Raylib.DrawTexture(texture.texture, x * tileSize, y * tileSize, Color.White);
+                    }
+                    else
+                    {
+                        Raylib.DrawRectangle(x * tileSize, y * tileSize, tileSize, tileSize, Color.Magenta);
+                    }
                 }
             }
         }
     }
 
-    public byte[] Save()
+    public void Save(ByteWriter writer)
     {
         List<byte> bytes = [];
-        bytes.AddRange(BitConverter.GetBytes(width));
-        bytes.AddRange(BitConverter.GetBytes(height));
+        writer.SetInt(width);
+        writer.SetInt(height);
         for (var x = 0; x < width; x++)
         {
             for (var y = 0; y < height; y++)
             {
-                bytes.Add(tiles[x, y]);
+                writer.SetByte(tiles[x, y]);
             }
         }
-        return [.. bytes];
     }
 
     public static Tilemap Load(ByteReader byteReader)
     {
         var width = byteReader.GetInt();
         var height = byteReader.GetInt();
+        Console.WriteLine(width + "_" + height);
         var tilemap = new Tilemap(width, height);
         for (var x = 0; x < width; x++)
         {
@@ -139,6 +215,7 @@ class Sprite(Vector2 position, Vector2 size)
 
 class World
 {
+    public readonly Textures textures;
     public readonly Tilemap tilemap;
     readonly List<Sprite> sprites = [];
     public readonly Texture2D tex = Raylib.LoadTexture("pngs/Player.png");
@@ -146,6 +223,7 @@ class World
     public World(string file)
     {
         var byteReader = new ByteReader(File.ReadAllBytes(file));
+        textures = new Textures(byteReader);
         tilemap = Tilemap.Load(byteReader);
         var count = byteReader.GetInt();
         for (var i = 0; i < count; i++)
@@ -156,6 +234,7 @@ class World
 
     public World(int width, int height)
     {
+        textures = new();
         tilemap = new(width, height);
     }
 
@@ -166,15 +245,15 @@ class World
 
     public void Save(string file)
     {
-        List<byte> bytes = [];
-        bytes.AddRange(tilemap.Save());
-        bytes.AddRange(BitConverter.GetBytes(sprites.Count));
+        ByteWriter writer = new();
+        textures.Save(writer);
+        tilemap.Save(writer);
+        writer.SetInt(sprites.Count);
         foreach (var s in sprites)
         {
-            bytes.AddRange(BitConverter.GetBytes(s.position.X));
-            bytes.AddRange(BitConverter.GetBytes(s.position.Y));
+            writer.SetVector2(s.position);
         }
-        File.WriteAllBytes(file, [.. bytes]);
+        File.WriteAllBytes(file, writer.ToBytes());
     }
 
     public void Update()
@@ -187,7 +266,7 @@ class World
 
     public void Draw()
     {
-        tilemap.Draw();
+        tilemap.Draw(textures);
         foreach (var s in sprites)
         {
             s.Draw(tex);
@@ -211,10 +290,11 @@ class Game : IGUI, IAwake, IForm
         current = this;
     }
 
-    public void Update(Vector2 pos, float width)
+    public float Update(Vector2 pos, float width)
     {
         MouseOver.SetDefault(this);
         world.Update();
         world.Draw();
+        return 0;
     }
 }

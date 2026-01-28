@@ -1,3 +1,3 @@
-LabeledTextbox Name Map1
+FileSelector Name maps
 SceneButton Load Editor
 SceneButton Back Main
