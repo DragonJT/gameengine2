@@ -83,14 +83,15 @@ class PaintTex
         Raylib.DrawTexturePro(tex, new Rectangle(0, 0, tx, ty), new Rectangle(0, 0, w, h), new Vector2(0, 0), 0, Color.White);
     }
 
-    public void SaveToPng(string file)
+    public void SaveToPng(string folder, string file)
     {
-        Raylib.ExportImage(img, $"pngs/{file}.png");
+        Raylib.ExportImage(img, $"data/{folder}/{file}.png");
     }
 }
 
 class Paint : IGUI, IAwake
 {
+    string folder;
     string name;
     PaintTex paintTex;
     PaintTex bgTex;
@@ -99,16 +100,33 @@ class Paint : IGUI, IAwake
     public void Awake(Scene last)
     {
         name = (string)last.GetValue("Name");
-        Console.WriteLine(name);
-        var file = $"pngs/{name}.png";
-        if (File.Exists(file))
+        if (last.name == "LoadTilePaint")
         {
+            folder = "tiles";
+            var file = $"data/{folder}/{name}.png";
             paintTex = new(file);
+        }
+        else if (last.name == "NewTilePaint")
+        {
+            folder = "tiles";
+            paintTex = new(100, 100);
+        }
+        else if (last.name == "LoadPaint")
+        {
+            folder = "sprites";
+            var file = $"data/{folder}/{name}.png";
+            paintTex = new(file);
+        }
+        else if (last.name == "NewPaint")
+        {
+            folder = "sprites";
+            paintTex = new((int)last.GetValue("Width"), (int)last.GetValue("Height"));
         }
         else
         {
-            paintTex = new((int)last.GetValue("Width"), (int)last.GetValue("Height"));
+            throw new Exception();
         }
+
         cam = new Camera2D
         {
             Offset = Raylib.GetScreenCenter(),
@@ -222,7 +240,7 @@ class Paint : IGUI, IAwake
         Raylib.EndMode2D();
         if ((bool)Scenes.current.GetValue("Save"))
         {
-            paintTex.SaveToPng(name);
+            paintTex.SaveToPng(folder, name);
         }
         return 0;
     }

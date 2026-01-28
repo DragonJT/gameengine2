@@ -429,7 +429,7 @@ static class Scenes
 
     public static void Awake(string styleFile)
     {
-        string[] files = Directory.GetFiles("scenes");
+        string[] files = Directory.GetFiles("data/scenes");
         foreach (var f in files)
         {
             var name = Path.GetFileNameWithoutExtension(f);
@@ -460,7 +460,7 @@ class Program
         Raylib.SetConfigFlags(ConfigFlags.ResizableWindow);
         Raylib.InitWindow(1000, 800, "GameEngine2");
         Raylib.MaximizeWindow();
-        Scenes.Awake("Style.txt");
+        Scenes.Awake("data/Style.txt");
 
         while (!Raylib.WindowShouldClose())
         {

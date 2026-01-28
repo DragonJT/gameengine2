@@ -7,10 +7,10 @@ class Texture
     public readonly bool valid;
     public readonly Texture2D texture;
 
-    public Texture(string name)
+    public Texture(string folder, string name)
     {
         this.name = name;
-        var file = $"pngs/{name}.png";
+        var file = $"data/{folder}/{name}.png";
         if (File.Exists(file))
         {
             valid = true;
@@ -25,6 +25,7 @@ class Texture
 
 class Textures
 {
+    readonly string folder;
     readonly List<Texture> textures = [];
 
     public void Save(ByteWriter writer)
@@ -36,23 +37,25 @@ class Textures
         }
     }
 
-    public Textures(ByteReader reader)
+    public Textures(string folder, ByteReader reader)
     {
+        this.folder = folder;
         var length = reader.GetInt();
         for (var i = 0; i < length; i++)
         {
             string name = reader.GetString();
-            textures.Add(new Texture(name));
+            textures.Add(new Texture(folder, name));
         }
     }
 
-    public Textures()
+    public Textures(string folder)
     {
+        this.folder = folder;
     }
 
     public Texture GetTexture(byte id)
     {
-        return textures[id - 1];
+        return textures[id];
     }
 
     public byte GetID(string name)
@@ -61,11 +64,11 @@ class Textures
         {
             if (textures[i].name == name)
             {
-                return (byte)(i + 1);
+                return (byte)i;
             }
         }
-        textures.Add(new Texture(name));
-        return (byte)textures.Count;
+        textures.Add(new Texture(folder, name));
+        return (byte)(textures.Count - 1);
     }
 }
 
@@ -118,7 +121,7 @@ class Tilemap(int width, int height)
                 var id = tiles[x, y];
                 if (id > 0)
                 {
-                    var texture = textures.GetTexture(id);
+                    var texture = textures.GetTexture((byte)(id - 1));
                     if (texture.valid)
                     {
                         Raylib.DrawTexture(texture.texture, x * tileSize, y * tileSize, Color.White);
@@ -134,7 +137,6 @@ class Tilemap(int width, int height)
 
     public void Save(ByteWriter writer)
     {
-        List<byte> bytes = [];
         writer.SetInt(width);
         writer.SetInt(height);
         for (var x = 0; x < width; x++)
@@ -150,7 +152,6 @@ class Tilemap(int width, int height)
     {
         var width = byteReader.GetInt();
         var height = byteReader.GetInt();
-        Console.WriteLine(width + "_" + height);
         var tilemap = new Tilemap(width, height);
         for (var x = 0; x < width; x++)
         {
@@ -163,8 +164,9 @@ class Tilemap(int width, int height)
     }
 }
 
-class Sprite(Vector2 position, Vector2 size)
+class Sprite(Vector2 position, Vector2 size, byte id)
 {
+    public byte id = id;
     public Vector2 position = position;
     public Vector2 size = size;
     public float gravity = 4000f;
@@ -189,69 +191,78 @@ class Sprite(Vector2 position, Vector2 size)
         }
     }
 
-    public void Update()
+    public void Update(Textures textures)
     {
-        var dt = Raylib.GetFrameTime();
-        if (Raylib.IsKeyDown(KeyboardKey.Left))
+        if(textures.GetTexture(id).name == "Player")
         {
-            TryMove(-speed * dt, 0);
-        }
-        if (Raylib.IsKeyDown(KeyboardKey.Right))
-        {
-            TryMove(speed * dt, 0);
-        }
-        velocity += gravity * dt;
-        if (!TryMove(0, velocity * dt) && Raylib.IsKeyDown(KeyboardKey.Up))
-        {
-            velocity -= jump;
+            var dt = Raylib.GetFrameTime();
+            if (Raylib.IsKeyDown(KeyboardKey.Left))
+            {
+                TryMove(-speed * dt, 0);
+            }
+            if (Raylib.IsKeyDown(KeyboardKey.Right))
+            {
+                TryMove(speed * dt, 0);
+            }
+            velocity += gravity * dt;
+            if (!TryMove(0, velocity * dt) && Raylib.IsKeyDown(KeyboardKey.Up))
+            {
+                velocity -= jump;
+            }
         }
     }
 
-    public void Draw(Texture2D tex)
+    public void Draw(Textures textures)
     {
+        var tex = textures.GetTexture(id).texture;
         Raylib.DrawTexture(tex, (int)(position.X - size.X / 2), (int)(position.Y - size.Y / 2), Color.White);
     }
 }
 
 class World
 {
-    public readonly Textures textures;
+    public readonly Textures spriteTextures;
+    public readonly Textures tileTextures;
     public readonly Tilemap tilemap;
     readonly List<Sprite> sprites = [];
-    public readonly Texture2D tex = Raylib.LoadTexture("pngs/Player.png");
 
     public World(string file)
     {
         var byteReader = new ByteReader(File.ReadAllBytes(file));
-        textures = new Textures(byteReader);
+        spriteTextures = new Textures("sprites", byteReader);
+        tileTextures = new Textures("tiles", byteReader);
         tilemap = Tilemap.Load(byteReader);
         var count = byteReader.GetInt();
         for (var i = 0; i < count; i++)
         {
-            Add(byteReader.GetVector2());
+            Add(byteReader.GetVector2(), byteReader.GetByte());
         }
     }
 
     public World(int width, int height)
     {
-        textures = new();
+        spriteTextures = new("sprites");
+        tileTextures = new("tiles");
         tilemap = new(width, height);
     }
 
-    public void Add(Vector2 position)
+    public void Add(Vector2 position, byte id)
     {
-        sprites.Add(new Sprite(position, new Vector2(tex.Width, tex.Height)));
+        var tex = spriteTextures.GetTexture(id).texture;
+        sprites.Add(new Sprite(position, new Vector2(tex.Width, tex.Height), id));
     }
 
     public void Save(string file)
     {
         ByteWriter writer = new();
-        textures.Save(writer);
+        spriteTextures.Save(writer);
+        tileTextures.Save(writer);
         tilemap.Save(writer);
         writer.SetInt(sprites.Count);
         foreach (var s in sprites)
         {
             writer.SetVector2(s.position);
+            writer.SetByte(s.id);
         }
         File.WriteAllBytes(file, writer.ToBytes());
     }
@@ -260,16 +271,16 @@ class World
     {
         foreach (var s in sprites)
         {
-            s.Update();
+            s.Update(spriteTextures);
         }
     }
 
     public void Draw()
     {
-        tilemap.Draw(textures);
+        tilemap.Draw(tileTextures);
         foreach (var s in sprites)
         {
-            s.Draw(tex);
+            s.Draw(spriteTextures);
         }
     }
 }
@@ -285,7 +296,7 @@ class Game : IGUI, IAwake, IForm
     {
         var name = (string)last.GetValue("Editor");
         Value = name;
-        var file = $"maps/{name}";
+        var file = $"data/maps/{name}";
         world = new(file);
         current = this;
     }

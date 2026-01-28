@@ -1,4 +1,6 @@
 SceneButton NewPaint NewPaint
 SceneButton LoadPaint LoadPaint
+SceneButton NewTilePaint NewTilePaint
+SceneButton LoadTilePaint LoadTilePaint
 SceneButton NewEditor NewEditor
 SceneButton LoadEditor LoadEditor

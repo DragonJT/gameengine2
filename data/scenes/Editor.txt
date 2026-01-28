@@ -1,0 +1,7 @@
+Editor
+Label Sprites
+FileSelector Sprites data/sprites
+Label Tiles
+FileSelector Tiles data/tiles
+SceneButton Play Game
+SceneButton Back Main
