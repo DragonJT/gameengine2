@@ -187,7 +187,7 @@ class Paint : IGUI, IAwake
         return Raylib.GetScreenToWorld2D(Raylib.GetMousePosition(), cam);
     }
 
-    public float Update(Vector2 pos, float width)
+    public float Update(Vector2 _pos, float _width)
     {
         MouseOver.SetDefault(this);
         cam.Offset = Raylib.GetScreenCenter();

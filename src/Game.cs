@@ -301,7 +301,7 @@ class Game : IGUI, IAwake, IForm
         current = this;
     }
 
-    public float Update(Vector2 pos, float width)
+    public float Update(Vector2 _pos, float _width)
     {
         MouseOver.SetDefault(this);
         world.Update();

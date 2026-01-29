@@ -4,3 +4,4 @@ SceneButton NewTilePaint NewTilePaint
 SceneButton LoadTilePaint LoadTilePaint
 SceneButton NewEditor NewEditor
 SceneButton LoadEditor LoadEditor
+SceneButton LearnToCode LearnToCode

@@ -79,6 +79,11 @@ class Style(string file)
         Raylib.DrawRectangle((int)rect.X, (int)rect.Y, (int)rect.Width, (int)rect.Height, styleColors.GetColor(layoutColor));
         return rect;
     }
+
+    public float MeasureText(string text)
+    {
+        return Raylib.MeasureText(text, fontSize);
+    }
 }
 
 static class MouseOver
@@ -116,6 +121,11 @@ interface IGUI
     float Update(Vector2 pos, float width);
 }
 
+interface IElement : IGUI
+{
+    float GetWidth();
+}
+
 interface IForm
 {
     string Name { get; }
@@ -127,9 +137,14 @@ interface IAwake
     void Awake(Scene last);
 }
 
-class Label(string text) : IGUI
+class Label(string text) : IElement
 {
     readonly string text = text;
+
+    public float GetWidth()
+    {
+        return Scenes.style.MeasureText(text);
+    }
 
     public float Update(Vector2 pos, float width)
     {
@@ -138,10 +153,17 @@ class Label(string text) : IGUI
     }
 }
 
-class Textbox(string value) : IGUI
+class Textbox(string value) : IElement
 {
     public string value = value;
     bool selected = false;
+
+    public float GetWidth()
+    {
+        var min = Scenes.style.MeasureText(" ");
+        var width = Scenes.style.MeasureText(value);
+        return width < min ? min : width;
+    }
 
     void UpdateText()
     {
@@ -318,6 +340,30 @@ class SceneButton(string name, string scene) : Button(name)
     public override void OnClick()
     {
         Scenes.ChangeScene(scene);
+    }
+}
+
+class Boolbox(bool value) : IElement
+{
+    public bool value = value;
+
+    public float GetWidth()
+    {
+        return Scenes.style.MeasureText("false");
+    }
+
+    public float Update(Vector2 pos, float width)
+    {
+        var mouseOver = MouseOver.IsMouseOver(this);
+        var onclick = mouseOver && Raylib.IsMouseButtonPressed(MouseButton.Left);
+        if (onclick)
+        {
+            value = !value;
+        }
+        var rect = Scenes.style.RectBorder(pos, width, mouseOver ? StyleColor.SelectedBorder : StyleColor.DeSelectedBorder);
+        MouseOver.SetRect(this, rect);
+        Scenes.style.DrawText(pos, value?"true":"false", StyleColor.TextDark);
+        return Style.lineSize;
     }
 }
 

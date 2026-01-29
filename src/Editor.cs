@@ -27,7 +27,7 @@ class Editor : IGUI, IAwake, IForm
         }
     }
 
-    public float Update(Vector2 pos, float width)
+    public float Update(Vector2 _pos, float _width)
     {
         var file = $"data/maps/{name}";
         MouseOver.SetDefault(this);
